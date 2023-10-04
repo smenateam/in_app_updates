@@ -2,7 +2,6 @@ package ru.tistol.in_app_updates
 
 import android.app.Activity
 import android.content.Intent
-
 import com.huawei.hms.jos.AppUpdateClient
 import com.huawei.hms.jos.JosApps
 import com.huawei.updatesdk.service.appmgr.bean.ApkUpgradeInfo
@@ -10,42 +9,44 @@ import com.huawei.updatesdk.service.otaupdate.CheckUpdateCallBack
 import com.huawei.updatesdk.service.otaupdate.UpdateKey
 import com.huawei.updatesdk.service.otaupdate.UpdateStatusCode
 import io.flutter.plugin.common.EventChannel
-
 import io.flutter.plugin.common.MethodChannel
 
-class HuaweiInAppUpdate private constructor() {
+class InAppUpdatesHuawei private constructor() {
     companion object {
 
         @Volatile
-        private var instance: HuaweiInAppUpdate? = null
+        private var instance: InAppUpdatesHuawei? = null
 
         fun getInstance() = instance ?: synchronized(this) {
-            instance ?: HuaweiInAppUpdate().also { instance = it }
+            instance ?: InAppUpdatesHuawei().also { instance = it }
         }
     }
 
     private var client: AppUpdateClient? = null
     private var upgradeInfo: ApkUpgradeInfo? = null
-    private var status: Int? = null
-    private var eventSink: EventChannel.EventSink? = null
+    private var hasUpdate: Boolean? = null
 
     fun checkForUpdateHuawei(
-        eventS: EventChannel.EventSink?=null,
+        result: MethodChannel.Result,
+        eventSink: EventChannel.EventSink?,
         activityApp: Activity?,
     ) {
-        eventSink = eventS
-        client = JosApps.getAppUpdateClient(activityApp)
+        if (client == null) {
+            client = JosApps.getAppUpdateClient(activityApp)
+        }
         client?.checkAppUpdate(
             activityApp,
             object : CheckUpdateCallBack {
                 override fun onUpdateInfo(intent: Intent?) {
-                    status = intent?.getIntExtra(UpdateKey.STATUS, -99)
+                    val status = intent?.getIntExtra(UpdateKey.STATUS, -99)
                     val errorDetails = mapOf<String, Any?>(
                         "code" to intent?.getIntExtra(UpdateKey.FAIL_CODE, -99),
                         "reason" to intent?.getStringExtra(UpdateKey.FAIL_REASON),
+                        "buttonStatus" to intent?.getIntExtra(UpdateKey.BUTTON_STATUS,-99),
                     )
                     if (status == UpdateStatusCode.HAS_UPGRADE_INFO) {
-                        val info = intent?.getSerializableExtra(UpdateKey.INFO)
+                        hasUpdate = true
+                        val info = intent.getSerializableExtra(UpdateKey.INFO)
                         if (info is ApkUpgradeInfo) {
                             upgradeInfo = info
                             val successResult = hashMapOf(
@@ -76,6 +77,7 @@ class HuaweiInAppUpdate private constructor() {
                             )
                             eventSink?.success(successResult)
                         } else {
+                            hasUpdate = false
                             eventSink?.error(
                                 "NO_UPGRADE_INFO",
                                 "No update is available",
@@ -107,7 +109,7 @@ class HuaweiInAppUpdate private constructor() {
                     } else if (status == UpdateStatusCode.IN_MARKET_UPDATING) {
                         eventSink?.error("IN_MARKET_UPDATING", "App is being updated", errorDetails)
                     } else {
-                        eventSink?.error("UNKNOWN_STATUS", "Status unknown", errorDetails)
+                        eventSink?.error("UNKNOWN_STATUS", "Status unknown $status", errorDetails)
                     }
                 }
 
@@ -119,9 +121,9 @@ class HuaweiInAppUpdate private constructor() {
 
                 override fun onUpdateStoreError(responseCode: Int) {
                 }
-
             },
         )
+        result.success(null)
     }
 
     fun updateHuawei(
@@ -133,17 +135,31 @@ class HuaweiInAppUpdate private constructor() {
             result.error(
                 "IN_APP_UPDATES_HUAWEI", "Use isUpdateAvailable first then updateApp", null
             )
+
+            result.success(null)
             return
         }
-        if (status != UpdateStatusCode.HAS_UPGRADE_INFO) {
+        if (hasUpdate == false) {
             result.error(
                 "ANDROID_APP_UPDATED",
                 "The app already updated",
                 null,
             )
+
+            result.success(null)
             return
         }
-        JosApps.getAppUpdateClient(activityApp)
-            .showUpdateDialog(activityApp, upgradeInfo, mustBtnOne)
+        if (hasUpdate == true) {
+            client?.showUpdateDialog(activityApp, upgradeInfo, mustBtnOne)
+        }
+        result.success(null)
+    }
+
+    fun releaseCallback() {
+        client?.releaseCallBack()
+    }
+
+    fun destroy() {
+        instance = null
     }
 }

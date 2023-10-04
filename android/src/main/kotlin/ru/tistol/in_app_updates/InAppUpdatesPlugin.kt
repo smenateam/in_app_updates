@@ -1,14 +1,9 @@
 package ru.tistol.in_app_updates
 
 import android.app.Activity
-import android.app.Activity.RESULT_CANCELED
-import android.app.Activity.RESULT_OK
 import android.app.Application
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
-import com.google.android.play.core.install.model.ActivityResult
-import com.google.android.play.core.install.model.AppUpdateType
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -16,11 +11,10 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.Result
-import io.flutter.plugin.common.PluginRegistry
 
 /** InAppUpdatesPlugin */
 class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware,
-    Application.ActivityLifecycleCallbacks, PluginRegistry.ActivityResultListener,
+    Application.ActivityLifecycleCallbacks,
     EventChannel.StreamHandler {
     private lateinit var channel: MethodChannel
     private lateinit var eventChannel: EventChannel
@@ -63,8 +57,8 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
                     return
                 }
                 if (isHuawei == true) {
-                    HuaweiInAppUpdate.getInstance().checkForUpdateHuawei(eventSink, activityApp)
-                    result.success(null)
+                    InAppUpdatesHuawei.getInstance()
+                        .checkForUpdateHuawei(result, eventSink, activityApp)
                 }
                 if (isHuawei == false) {
                     InAppUpdatesAndroid.getInstance().isUpdateAvailable(result, activityApp, this)
@@ -86,11 +80,18 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
                 if (activityApp != null) {
                     if (isHuawei == true) {
                         val mustBtnOne = args?.get("mustBtnOne") ?: false
-                        HuaweiInAppUpdate.getInstance()
+                        InAppUpdatesHuawei.getInstance()
                             .updateHuawei(result, activityApp, mustBtnOne)
                     }
 
                     if (isHuawei == false) {
+                        eventSink!!.success(mapOf(
+                            "installStatus" to -1,
+                            "bytesDownloaded" to 1000,
+                            "totalBytesToDownload" to 1000,
+                            "packageName" to "state.packageName()",
+                            "installErrorCode" to 1000
+                        ))
                         InAppUpdatesAndroid.getInstance()
                             .updateApp(
                                 immediate,
@@ -127,6 +128,12 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
 
     override fun onDetachedFromActivity() {
         activityApp = null
+        if (isHuawei == true) {
+            InAppUpdatesHuawei.getInstance().destroy()
+        }
+        if (isHuawei == false) {
+            InAppUpdatesAndroid.getInstance().destroy()
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -164,40 +171,12 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
         activityApp = p0
         if (isHuawei == false) {
             InAppUpdatesAndroid.getInstance().unregisterListeners()
+            InAppUpdatesAndroid.getInstance().destroy()
         }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
-        if (requestCode == 200) {
-            if (InAppUpdatesAndroid.getInstance().appUpdateType == AppUpdateType.IMMEDIATE) {
-                when (resultCode) {
-                    RESULT_CANCELED -> {
-//                        updateResult?.error("USER_DENIED_UPDATE", resultCode.toString(), null)
-                    }
-                    RESULT_OK -> {
-//                        updateResult?.success(null)
-                    }
-                    ActivityResult.RESULT_IN_APP_UPDATE_FAILED -> {
-//                        updateResult?.error("IN_APP_UPDATE_FAILED", "Some other error prevented either the user from providing consent or the update to proceed.", null)
-                    }
-                }
-//                updateResult = null
-                return true
-            } else if (InAppUpdatesAndroid.getInstance().appUpdateType == AppUpdateType.FLEXIBLE) {
-                when (resultCode) {
-                    RESULT_CANCELED -> {
-//                        updateResult?.error("USER_DENIED_UPDATE", resultCode.toString(), null)
-//                        updateResult = null
-                    }
-                    ActivityResult.RESULT_IN_APP_UPDATE_FAILED -> {
-//                        updateResult?.error("IN_APP_UPDATE_FAILED", resultCode.toString(), null)
-//                        updateResult = null
-                    }
-                }
-                return true
-            }
+        if (isHuawei == true) {
+            InAppUpdatesHuawei.getInstance().releaseCallback()
+            InAppUpdatesHuawei.getInstance().destroy()
         }
-        return false
     }
 }
 

@@ -2,7 +2,6 @@ package ru.tistol.in_app_updates
 
 import android.app.Activity
 import android.app.Application
-import com.google.android.gms.tasks.Task
 import com.google.android.play.core.appupdate.AppUpdateInfo
 import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
@@ -11,6 +10,8 @@ import com.google.android.play.core.install.InstallStateUpdatedListener
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
+import com.google.android.play.core.ktx.isFlexibleUpdateAllowed
+import com.google.android.play.core.ktx.isImmediateUpdateAllowed
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
@@ -28,28 +29,28 @@ class InAppUpdatesAndroid private constructor() {
     }
 
     private lateinit var appUpdateManager: AppUpdateManager
-    private lateinit var appUpdateInfo: AppUpdateInfo
-    private var appUpdateInfoTask: Task<AppUpdateInfo>? = null
     private var installStatus: Int? = null
     private var listener: InstallStateUpdatedListener? = null
-    var appUpdateType: Int? = null
+    private var appUpdateType: Int? = null
+    private var appUpdateInfo: AppUpdateInfo? = null
 
     fun isUpdateAvailable(
         result: MethodChannel.Result,
         activityApp: Activity?,
-        activityLifecycleCallbacks: Application.ActivityLifecycleCallbacks
+        activityLifecycleCallbacks: Application.ActivityLifecycleCallbacks,
     ) {
-        activityApp?.application?.registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
+//        activityApp?.application?.registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
         appUpdateManager = AppUpdateManagerFactory.create(activityApp!!)
-        appUpdateInfoTask = appUpdateManager.appUpdateInfo
-        appUpdateInfoTask?.addOnSuccessListener { appUpdateInfo ->
-            this.appUpdateInfo = appUpdateInfo
+        val appUpdateInfoTask = appUpdateManager.appUpdateInfo
+        appUpdateInfoTask.addOnSuccessListener { appUpdateInfo ->
             this.installStatus = appUpdateInfo.installStatus()
+            this.appUpdateInfo = appUpdateInfo
             result.success(
                 mapOf(
                     "updateAvailability" to appUpdateInfo.updateAvailability(),
-                    "immediateAllowed" to appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE),
-                    "flexibleAllowed" to appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE),
+                    "isUpdateAvailable" to (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE),
+                    "immediateAllowed" to appUpdateInfo.isImmediateUpdateAllowed,
+                    "flexibleAllowed" to appUpdateInfo.isFlexibleUpdateAllowed,
                     "availableVersionCode" to appUpdateInfo.availableVersionCode(),
                     "installStatus" to appUpdateInfo.installStatus(),
                     "packageName" to appUpdateInfo.packageName(),
@@ -62,7 +63,7 @@ class InAppUpdatesAndroid private constructor() {
                 completeUpdate()
             }
         }
-        appUpdateInfoTask?.addOnFailureListener {
+        appUpdateInfoTask.addOnFailureListener {
             result.error("IN_APP_UPDATES_TASK_FAILURE", it.message, null)
         }
     }
@@ -73,7 +74,7 @@ class InAppUpdatesAndroid private constructor() {
         allowAssetPackDeletion: Boolean,
         activityApp: Activity,
         result: MethodChannel.Result,
-        eventSink: EventChannel.EventSink?
+        eventSink: EventChannel.EventSink?,
     ) {
         if (immediate == flexible) {
             result.error(
@@ -83,7 +84,7 @@ class InAppUpdatesAndroid private constructor() {
             )
             return
         }
-        if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_NOT_AVAILABLE) {
+        if (appUpdateInfo?.updateAvailability() == UpdateAvailability.UPDATE_NOT_AVAILABLE) {
             result.error(
                 "ANDROID_APP_UPDATED",
                 "The app already updated",
@@ -92,13 +93,31 @@ class InAppUpdatesAndroid private constructor() {
             return
         }
         registerListeners(eventSink)
-        if (immediate) {
-            appUpdateType = AppUpdateType.IMMEDIATE
-            immediateUpdate(allowAssetPackDeletion, activityApp)
-        }
-        if (flexible) {
-            appUpdateType = AppUpdateType.FLEXIBLE
-            flexibleUpdate(allowAssetPackDeletion, activityApp)
+        if (appUpdateInfo == null) {
+            val appUpdateInfoTask = appUpdateManager.appUpdateInfo
+            appUpdateInfoTask.addOnSuccessListener { appUpdateInfo ->
+                if (immediate) {
+                    appUpdateType = AppUpdateType.IMMEDIATE
+                    immediateUpdate(allowAssetPackDeletion, activityApp, appUpdateInfo)
+                }
+                if (flexible) {
+                    appUpdateType = AppUpdateType.FLEXIBLE
+                    flexibleUpdate(allowAssetPackDeletion, activityApp, appUpdateInfo)
+                }
+                if (installStatus == InstallStatus.DOWNLOADED) {
+                    completeUpdate()
+                }
+            }
+        } else {
+            if (immediate) {
+                appUpdateType = AppUpdateType.IMMEDIATE
+                immediateUpdate(allowAssetPackDeletion, activityApp, appUpdateInfo!!)
+            }
+            if (flexible) {
+                appUpdateType = AppUpdateType.FLEXIBLE
+                flexibleUpdate(allowAssetPackDeletion, activityApp, appUpdateInfo!!)
+            }
+            appUpdateInfo = null
         }
         result.success(null)
     }
@@ -106,26 +125,26 @@ class InAppUpdatesAndroid private constructor() {
     private fun immediateUpdate(
         allowAssetPackDeletion: Boolean,
         activityApp: Activity,
+        appUpdateInfo: AppUpdateInfo,
     ) {
-        appUpdateManager.startUpdateFlowForResult(
+        appUpdateManager.startUpdateFlow(
             appUpdateInfo,
             activityApp,
             AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE)
                 .setAllowAssetPackDeletion(allowAssetPackDeletion).build(),
-            200,
         )
     }
 
     private fun flexibleUpdate(
         allowAssetPackDeletion: Boolean,
         activityApp: Activity,
+        appUpdateInfo: AppUpdateInfo,
     ) {
-        appUpdateManager.startUpdateFlowForResult(
+        appUpdateManager.startUpdateFlow(
             appUpdateInfo,
             activityApp,
             AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE)
                 .setAllowAssetPackDeletion(allowAssetPackDeletion).build(),
-            200,
         )
     }
 
@@ -142,6 +161,7 @@ class InAppUpdatesAndroid private constructor() {
     private fun registerListeners(
         eventSink: EventChannel.EventSink?,
     ) {
+        unregisterListeners()
         listener = InstallStateUpdatedListener { state ->
             installStatus = state.installStatus()
             eventSink?.success(
@@ -162,7 +182,7 @@ class InAppUpdatesAndroid private constructor() {
                     unregisterListeners()
                 }
                 InstallStatus.UNKNOWN -> {
-                    eventSink?.error("UNKNOWN","Unknown error",null)
+                    eventSink?.error("UNKNOWN", "Unknown error", null)
                     unregisterListeners()
                 }
                 InstallStatus.FAILED -> {
@@ -185,11 +205,14 @@ class InAppUpdatesAndroid private constructor() {
         appUpdateManager.registerListener(listener!!)
     }
 
-    fun unregisterListeners(
-    ) {
+    fun unregisterListeners() {
         if (listener != null) {
             appUpdateManager.unregisterListener(listener!!)
             listener = null
         }
+    }
+
+    fun destroy() {
+        instance = null
     }
 }
