@@ -135,8 +135,6 @@ class InAppUpdatesHuawei private constructor() {
             result.error(
                 "IN_APP_UPDATES_HUAWEI", "Use isUpdateAvailable first then updateApp", null
             )
-
-            result.success(null)
             return
         }
         if (hasUpdate == false) {
@@ -145,8 +143,6 @@ class InAppUpdatesHuawei private constructor() {
                 "The app already updated",
                 null,
             )
-
-            result.success(null)
             return
         }
         if (hasUpdate == true) {

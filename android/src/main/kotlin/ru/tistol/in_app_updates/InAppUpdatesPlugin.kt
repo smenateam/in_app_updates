@@ -85,13 +85,15 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
                     }
 
                     if (isHuawei == false) {
-                        eventSink!!.success(mapOf(
-                            "installStatus" to -1,
-                            "bytesDownloaded" to 1000,
-                            "totalBytesToDownload" to 1000,
-                            "packageName" to "state.packageName()",
-                            "installErrorCode" to 1000
-                        ))
+                        eventSink!!.success(
+                            mapOf(
+                                "installStatus" to -1,
+                                "bytesDownloaded" to 0,
+                                "totalBytesToDownload" to 0,
+                                "packageName" to "",
+                                "installErrorCode" to 0
+                            )
+                        )
                         InAppUpdatesAndroid.getInstance()
                             .updateApp(
                                 immediate,
