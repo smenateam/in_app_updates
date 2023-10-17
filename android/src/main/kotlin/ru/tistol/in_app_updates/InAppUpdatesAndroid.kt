@@ -1,7 +1,6 @@
 package ru.tistol.in_app_updates
 
 import android.app.Activity
-import android.app.Application
 import com.google.android.play.core.appupdate.AppUpdateInfo
 import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
@@ -30,16 +29,13 @@ class InAppUpdatesAndroid private constructor() {
 
     private lateinit var appUpdateManager: AppUpdateManager
     private var installStatus: Int? = null
-    private var listener: InstallStateUpdatedListener? = null
     private var appUpdateType: Int? = null
     private var appUpdateInfo: AppUpdateInfo? = null
 
     fun isUpdateAvailable(
         result: MethodChannel.Result,
         activityApp: Activity?,
-        activityLifecycleCallbacks: Application.ActivityLifecycleCallbacks,
     ) {
-//        activityApp?.application?.registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
         appUpdateManager = AppUpdateManagerFactory.create(activityApp!!)
         val appUpdateInfoTask = appUpdateManager.appUpdateInfo
         appUpdateInfoTask.addOnSuccessListener { appUpdateInfo ->
@@ -161,7 +157,7 @@ class InAppUpdatesAndroid private constructor() {
     private fun registerListeners(
         eventSink: EventChannel.EventSink?,
     ) {
-        unregisterListeners()
+        lateinit var listener: InstallStateUpdatedListener
         listener = InstallStateUpdatedListener { state ->
             installStatus = state.installStatus()
             eventSink?.success(
@@ -175,24 +171,24 @@ class InAppUpdatesAndroid private constructor() {
             )
             when (state.installStatus()) {
                 InstallStatus.DOWNLOADED -> {
-                    unregisterListeners()
+                    unregisterListeners(listener)
                 }
                 InstallStatus.CANCELED -> {
                     eventSink?.error("CANCELED", "Canceled screen", null)
-                    unregisterListeners()
+                    unregisterListeners(listener)
                 }
                 InstallStatus.UNKNOWN -> {
                     eventSink?.error("UNKNOWN", "Unknown error", null)
-                    unregisterListeners()
+                    unregisterListeners(listener)
                 }
                 InstallStatus.FAILED -> {
                     eventSink?.error("FAILED", "FAILED error", null)
-                    unregisterListeners()
+                    unregisterListeners(listener)
                 }
                 InstallStatus.DOWNLOADING -> {
                 }
                 InstallStatus.INSTALLED -> {
-                    unregisterListeners()
+                    unregisterListeners(listener)
                 }
                 InstallStatus.INSTALLING -> {
                 }
@@ -202,14 +198,11 @@ class InAppUpdatesAndroid private constructor() {
                 }
             }
         }
-        appUpdateManager.registerListener(listener!!)
+        appUpdateManager.registerListener(listener)
     }
 
-    fun unregisterListeners() {
-        if (listener != null) {
-            appUpdateManager.unregisterListener(listener!!)
-            listener = null
-        }
+    private fun unregisterListeners(listener: InstallStateUpdatedListener) {
+        appUpdateManager.unregisterListener(listener)
     }
 
     fun destroy() {

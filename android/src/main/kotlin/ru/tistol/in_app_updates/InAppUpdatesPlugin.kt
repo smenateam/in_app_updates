@@ -2,7 +2,6 @@ package ru.tistol.in_app_updates
 
 import android.app.Activity
 import android.app.Application
-import android.content.Context
 import android.os.Bundle
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -18,7 +17,6 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
     EventChannel.StreamHandler {
     private lateinit var channel: MethodChannel
     private lateinit var eventChannel: EventChannel
-    private lateinit var contextApp: Context
     private var activityApp: Activity? = null
     private var eventSink: EventChannel.EventSink? = null
     private var isHuawei: Boolean? = null
@@ -34,7 +32,6 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
     }
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-        contextApp = flutterPluginBinding.applicationContext
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "in_app_updates")
         channel.setMethodCallHandler(this)
 
@@ -61,7 +58,7 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
                         .checkForUpdateHuawei(result, eventSink, activityApp)
                 }
                 if (isHuawei == false) {
-                    InAppUpdatesAndroid.getInstance().isUpdateAvailable(result, activityApp, this)
+                    InAppUpdatesAndroid.getInstance().isUpdateAvailable(result, activityApp)
                 }
             }
             "updateApp" -> {
@@ -85,15 +82,6 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
                     }
 
                     if (isHuawei == false) {
-                        eventSink!!.success(
-                            mapOf(
-                                "installStatus" to -1,
-                                "bytesDownloaded" to 0,
-                                "totalBytesToDownload" to 0,
-                                "packageName" to "",
-                                "installErrorCode" to 0
-                            )
-                        )
                         InAppUpdatesAndroid.getInstance()
                             .updateApp(
                                 immediate,
@@ -118,67 +106,58 @@ class InAppUpdatesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
 
     override fun onAttachedToActivity(activityPluginBinding: ActivityPluginBinding) {
         activityApp = activityPluginBinding.activity
+        if (isHuawei == false) {
+            activityApp?.application?.registerActivityLifecycleCallbacks(this)
+        }
     }
 
-    override fun onDetachedFromActivityForConfigChanges() {
-        activityApp = null
-    }
+    override fun onDetachedFromActivityForConfigChanges() {}
 
     override fun onReattachedToActivityForConfigChanges(activityPluginBinding: ActivityPluginBinding) {
-        activityApp = activityPluginBinding.activity
     }
 
     override fun onDetachedFromActivity() {
-        activityApp = null
-        if (isHuawei == true) {
-            InAppUpdatesHuawei.getInstance().destroy()
-        }
         if (isHuawei == false) {
-            InAppUpdatesAndroid.getInstance().destroy()
+            activityApp?.application?.unregisterActivityLifecycleCallbacks(this)
         }
+        activityApp = null
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+        if (isHuawei == false) {
+            InAppUpdatesAndroid.getInstance().destroy()
+        }
+        if (isHuawei == true) {
+            InAppUpdatesHuawei.getInstance().destroy()
+        }
     }
 
     override fun onActivityCreated(p0: Activity, p1: Bundle?) {
-        activityApp = p0
     }
 
     override fun onActivityStarted(p0: Activity) {
-        activityApp = p0
     }
 
     override fun onActivityResumed(p0: Activity) {
-        activityApp = p0
     }
 
     override fun onActivityPaused(p0: Activity) {
-        activityApp = p0
         if (isHuawei == false) {
             InAppUpdatesAndroid.getInstance().completeUpdate()
+        }
+        if (isHuawei == true) {
+            InAppUpdatesHuawei.getInstance().releaseCallback()
         }
     }
 
     override fun onActivityStopped(p0: Activity) {
-        activityApp = p0
     }
 
     override fun onActivitySaveInstanceState(p0: Activity, p1: Bundle) {
-        activityApp = p0
     }
 
     override fun onActivityDestroyed(p0: Activity) {
-        activityApp = p0
-        if (isHuawei == false) {
-            InAppUpdatesAndroid.getInstance().unregisterListeners()
-            InAppUpdatesAndroid.getInstance().destroy()
-        }
-        if (isHuawei == true) {
-            InAppUpdatesHuawei.getInstance().releaseCallback()
-            InAppUpdatesHuawei.getInstance().destroy()
-        }
     }
 }
 

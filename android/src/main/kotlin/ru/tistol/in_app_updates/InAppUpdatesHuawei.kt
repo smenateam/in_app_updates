@@ -42,7 +42,7 @@ class InAppUpdatesHuawei private constructor() {
                     val errorDetails = mapOf<String, Any?>(
                         "code" to intent?.getIntExtra(UpdateKey.FAIL_CODE, -99),
                         "reason" to intent?.getStringExtra(UpdateKey.FAIL_REASON),
-                        "buttonStatus" to intent?.getIntExtra(UpdateKey.BUTTON_STATUS,-99),
+                        "buttonStatus" to intent?.getIntExtra(UpdateKey.BUTTON_STATUS, -99),
                     )
                     if (status == UpdateStatusCode.HAS_UPGRADE_INFO) {
                         hasUpdate = true
@@ -152,7 +152,9 @@ class InAppUpdatesHuawei private constructor() {
     }
 
     fun releaseCallback() {
-        client?.releaseCallBack()
+        if (hasUpdate == true) {
+            client?.releaseCallBack()
+        }
     }
 
     fun destroy() {
