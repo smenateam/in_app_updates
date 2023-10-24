@@ -44,7 +44,8 @@ class InAppUpdatesAndroid private constructor() {
             result.success(
                 mapOf(
                     "updateAvailability" to appUpdateInfo.updateAvailability(),
-                    "isUpdateAvailable" to (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE),
+                    "isUpdateAvailable" to (appUpdateInfo.updateAvailability()
+                            == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS || appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE),
                     "immediateAllowed" to appUpdateInfo.isImmediateUpdateAllowed,
                     "flexibleAllowed" to appUpdateInfo.isFlexibleUpdateAllowed,
                     "availableVersionCode" to appUpdateInfo.availableVersionCode(),
